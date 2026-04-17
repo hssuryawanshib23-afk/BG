@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BrainGain Practice</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260417a">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">BrainGain Practice</p>
+          <h1>Attempt A Test</h1>
+          <div id="student-session-identity" class="session-pill">Logged in as student</div>
+          <p class="hero-copy">
+            Start a generated test, move question by question, save progress automatically, and submit before the timer runs out.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-tests-button" class="primary-button" type="button">Refresh Tests</button>
+          <button id="take-another-test-button" class="secondary-button" type="button">View Test List</button>
+          <button id="logout-button" class="secondary-button" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Your Details</h2>
+            <p>The same student record is attached to the attempt and reused if you come back later.</p>
+          </div>
+          <div id="student-status-banner" class="status-banner">Choose a test to begin.</div>
+          <div class="form-stack">
+            <label class="field">
+              <span>Full Name</span>
+              <input id="student-name-input" placeholder="Harsh Suryawanshi" required>
+            </label>
+            <label class="field">
+              <span>Roll Number</span>
+              <input id="student-roll-number-input" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input id="student-email-input" type="email" placeholder="Optional">
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Attempt Snapshot</h2>
+            <p>Track the selected test, current timer state, and whether you have an active in-progress attempt.</p>
+          </div>
+          <div id="student-overview" class="result-stack top-gap"></div>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Available Tests</h2>
+            <p>Select a published test. The runner below activates as soon as you start.</p>
+          </div>
+          <div class="button-row top-gap">
+            <button id="load-public-tests-button" class="secondary-button" type="button">Load Available Tests</button>
+            <button id="start-attempt-button" class="primary-button" type="button">Start Selected Test</button>
+          </div>
+          <input id="selected-test-id" type="hidden">
+          <div id="public-tests-list" class="list-stack"></div>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Attempt Runner</h2>
+            <p>One question at a time, with review markers, a navigation palette, and a countdown timer.</p>
+          </div>
+          <div id="attempt-summary" class="result-stack top-gap"></div>
+          <div class="attempt-runner">
+            <aside class="attempt-sidebar">
+              <div class="subpanel">
+                <div class="panel-heading">
+                  <h3>Question Palette</h3>
+                  <p>Jump between questions at any time.</p>
+                </div>
+                <div id="question-state-legend" class="result-stack top-gap"></div>
+                <div id="question-palette" class="question-palette top-gap"></div>
+              </div>
+            </aside>
+            <section class="attempt-stage">
+              <div id="attempt-empty-state" class="attempt-empty-state">
+                Start a test to load the timed runner.
+              </div>
+              <div id="question-stage"></div>
+              <div class="button-row">
+                <button id="previous-question-button" class="secondary-button" type="button">Previous</button>
+                <button id="mark-review-button" class="secondary-button" type="button">Mark For Review</button>
+                <button id="clear-response-button" class="secondary-button" type="button">Clear Response</button>
+                <button id="save-next-button" class="primary-button" type="button">Save And Next</button>
+                <button id="submit-attempt-button" class="primary-button" type="button">Submit Test</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Results</h2>
+            <p>Once the attempt is submitted or auto-submitted, scored feedback appears here.</p>
+          </div>
+          <div id="attempt-results" class="list-stack"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/auth.js?v=20260417a" defer></script>
+    <script src="/static/student.js?v=20260417a" defer></script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BrainGain Login</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260322e">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">BrainGain</p>
+          <h1>Login</h1>
+          <p class="hero-copy">
+            Choose whether you are an admin or a student, then log in with the demo credentials below.
+          </p>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Role And Login</h2>
+            <p>Admins manage content and generate tests. Students take those tests. Changing the role below auto-fills the matching demo credentials.</p>
+          </div>
+          <div id="login-status-banner" class="status-banner">Choose a role and sign in.</div>
+          <form id="login-form" class="form-stack">
+            <label class="field">
+              <span>I Am A</span>
+              <select id="login-role-select">
+                <option value="admin">admin</option>
+                <option value="student">student</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Email Or Username</span>
+              <input id="login-username-input" autocomplete="username" required>
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="login-password-input" type="password" autocomplete="current-password" required>
+            </label>
+            <button class="primary-button" type="submit">Login</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Demo Credentials</h2>
+            <p>These are hardcoded demo credentials for this prototype.</p>
+          </div>
+          <div class="form-stack">
+            <article class="list-card">
+              <strong>Admin Login</strong>
+              <div>Email: <code>admin@braingain.local</code></div>
+              <div>Password: <code>admin123</code></div>
+            </article>
+            <article class="list-card">
+              <strong>Student Login</strong>
+              <div>Email: <code>student@braingain.local</code></div>
+              <div>Password: <code>student123</code></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/auth.js?v=20260322e" defer></script>
+    <script src="/static/login.js?v=20260322e" defer></script>
+  </body>
+</html>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BrainGain Admin</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260417b">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">BrainGain Admin</p>
+          <h1>Manual Question Authoring</h1>
+          <div id="session-identity" class="session-pill">Logged in as admin</div>
+          <p class="hero-copy">
+            Keep this simple: create the subject structure, add questions manually, and review the saved questions for the selected topic.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-all-button" class="primary-button" type="button">Refresh</button>
+          <button id="logout-button" class="secondary-button" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Workspace Snapshot</h2>
+            <p>Everything on this page stays focused on manual creation and review only.</p>
+          </div>
+          <div id="admin-overview" class="result-stack top-gap"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Current Scope</h2>
+            <p>Choose the admin, subject, chapter, and topic you are working in.</p>
+          </div>
+          <div id="status-banner" class="status-banner">Ready.</div>
+          <div class="form-stack">
+            <label class="field">
+              <span>Admin</span>
+              <select id="admin-select"></select>
+            </label>
+            <label class="field">
+              <span>Subject</span>
+              <select id="subject-select"></select>
+            </label>
+            <label class="field">
+              <span>Chapter</span>
+              <select id="chapter-select"></select>
+            </label>
+            <label class="field">
+              <span>Topic</span>
+              <select id="topic-select"></select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Setup</h2>
+            <p>Create the syllabus structure before adding questions.</p>
+          </div>
+          <div class="form-stack">
+            <form id="create-subject-form" class="inline-form">
+              <input id="subject-name-input" placeholder="Subject name" required>
+              <input id="subject-grade-input" placeholder="Grade" type="number" required>
+              <input id="subject-board-input" placeholder="Board" required>
+              <button class="primary-button" type="submit">Create Subject</button>
+            </form>
+            <form id="create-chapter-form" class="inline-form">
+              <select id="create-chapter-subject-select"></select>
+              <input id="chapter-number-input" placeholder="Chapter number" type="number" required>
+              <input id="chapter-name-input" placeholder="Chapter name" required>
+              <button class="primary-button" type="submit">Create Chapter</button>
+            </form>
+            <form id="create-topic-form" class="inline-form">
+              <select id="create-topic-chapter-select"></select>
+              <input id="topic-name-input" placeholder="Topic name" required>
+              <input id="topic-order-input" placeholder="Display order" type="number" required>
+              <button class="primary-button" type="submit">Create Topic</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Question Editor</h2>
+            <p>Only MCQ and MSQ are shown here to keep authoring simple for admins.</p>
+          </div>
+          <div id="question-editor-state" class="status-banner">Select a topic to start creating questions.</div>
+          <form id="question-form" class="form-stack">
+            <input id="editing-question-id" type="hidden">
+            <div class="two-column-grid">
+              <label class="field">
+                <span>Question Type</span>
+                <select id="question-format-select">
+                  <option value="mcq">mcq</option>
+                  <option value="msq">msq</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Difficulty</span>
+                <select id="question-difficulty-select">
+                  <option value="easy">easy</option>
+                  <option value="medium">medium</option>
+                  <option value="hard">hard</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Question Category</span>
+                <select id="question-type-select">
+                  <option value="definition">definition</option>
+                  <option value="identification">identification</option>
+                  <option value="trap">trap</option>
+                  <option value="application">application</option>
+                  <option value="comparison">comparison</option>
+                  <option value="reasoning">reasoning</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <select id="question-status-select">
+                  <option value="active">active</option>
+                  <option value="draft">draft</option>
+                  <option value="disabled">disabled</option>
+                  <option value="archived">archived</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Question Text</span>
+              <textarea id="question-text-input" rows="4" placeholder="Enter the question exactly as students should see it." required></textarea>
+            </label>
+
+            <div class="two-column-grid">
+              <label class="field">
+                <span>Attached Image</span>
+                <select id="question-image-select"></select>
+              </label>
+              <label class="field">
+                <span>Upload New Image</span>
+                <input id="question-image-file-input" type="file" accept="image/*">
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="upload-question-image-button" class="secondary-button" type="button">Upload Image</button>
+              <button id="clear-question-image-button" class="secondary-button" type="button">Remove Image</button>
+            </div>
+
+            <div id="question-image-preview" class="inline-preview">No image attached.</div>
+
+            <div class="options-grid">
+              <label class="option-card">
+                <span class="option-label">Option A</span>
+                <input id="option-a-text" required>
+                <label class="checkbox-row"><input id="option-a-correct" type="checkbox"> <span>Correct</span></label>
+              </label>
+              <label class="option-card">
+                <span class="option-label">Option B</span>
+                <input id="option-b-text" required>
+                <label class="checkbox-row"><input id="option-b-correct" type="checkbox"> <span>Correct</span></label>
+              </label>
+              <label class="option-card">
+                <span class="option-label">Option C</span>
+                <input id="option-c-text" required>
+                <label class="checkbox-row"><input id="option-c-correct" type="checkbox"> <span>Correct</span></label>
+              </label>
+              <label class="option-card">
+                <span class="option-label">Option D</span>
+                <input id="option-d-text" required>
+                <label class="checkbox-row"><input id="option-d-correct" type="checkbox"> <span>Correct</span></label>
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button id="save-question-button" class="primary-button" type="submit">Create Question</button>
+              <button id="reset-question-button" class="secondary-button" type="button">Clear Form</button>
+              <button id="delete-question-button" class="destructive-button" type="button">Delete Selected</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Question Review</h2>
+            <p>Review the questions stored under the selected topic and click any one to edit it.</p>
+          </div>
+          <div class="button-row top-gap">
+            <button id="load-questions-button" class="secondary-button" type="button">Reload Questions</button>
+          </div>
+          <div id="question-review-summary" class="result-stack top-gap"></div>
+          <div id="questions-list" class="list-stack"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/auth.js?v=20260417b" defer></script>
+    <script src="/static/app.js?v=20260417b" defer></script>
+  </body>
+</html>
