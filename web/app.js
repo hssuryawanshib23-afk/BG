@@ -6,11 +6,16 @@ const state = {
   chaptersBySubjectId: new Map(),
   topicsByChapterId: new Map(),
   approvedFiguresByTopicId: new Map(),
+  questionTreeBySubjectId: new Map(),
+  testsBySubjectId: new Map(),
   selectedAdminId: "",
   selectedSubjectId: "",
   selectedChapterId: "",
   selectedTopicId: "",
   currentQuestions: [],
+  selectedTestQuestionIds: new Set(),
+  isCreatingTest: false,
+  latestCreatedTest: null,
   editingQuestionId: "",
   unsupportedQuestionCount: 0,
 };
@@ -26,6 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAdminOverview();
   renderQuestions([]);
   renderQuestionReviewSummary([]);
+  renderTestBuilder();
+  renderAdminTests();
   clearQuestionForm({ keepStatus: true });
   refreshAllData().catch(handleUnexpectedError);
 });
@@ -72,6 +79,24 @@ function bindEvents() {
     event.preventDefault();
     createTopic().catch(handleUnexpectedError);
   });
+  document.getElementById("edit-subject-button").addEventListener("click", () => {
+    editSelectedSubject().catch(handleUnexpectedError);
+  });
+  document.getElementById("delete-subject-button").addEventListener("click", () => {
+    deleteSelectedSubject().catch(handleUnexpectedError);
+  });
+  document.getElementById("edit-chapter-button").addEventListener("click", () => {
+    editSelectedChapter().catch(handleUnexpectedError);
+  });
+  document.getElementById("delete-chapter-button").addEventListener("click", () => {
+    deleteSelectedChapter().catch(handleUnexpectedError);
+  });
+  document.getElementById("edit-topic-button").addEventListener("click", () => {
+    editSelectedTopic().catch(handleUnexpectedError);
+  });
+  document.getElementById("delete-topic-button").addEventListener("click", () => {
+    deleteSelectedTopic().catch(handleUnexpectedError);
+  });
 
   document.getElementById("question-format-select").addEventListener("change", syncCorrectOptionBehavior);
   document.getElementById("question-image-select").addEventListener("change", renderQuestionImagePreview);
@@ -113,6 +138,15 @@ function bindEvents() {
   document.getElementById("load-questions-button").addEventListener("click", () => {
     loadQuestionsForSelectedTopic().catch(handleUnexpectedError);
   });
+  document.getElementById("select-all-test-questions-button").addEventListener("click", () => {
+    selectAllTestQuestionsInScope();
+  });
+  document.getElementById("clear-selected-test-questions-button").addEventListener("click", () => {
+    clearSelectedTestQuestions();
+  });
+  document.getElementById("generate-test-button").addEventListener("click", () => {
+    generateSelectedTest().catch(handleUnexpectedError);
+  });
 }
 
 async function refreshAllData() {
@@ -120,8 +154,10 @@ async function refreshAllData() {
   await loadAdmins();
   await loadSubjects();
   await loadQuestionsForSelectedTopic();
+  await loadAdminTestsForSelectedSubject();
   renderAdminOverview();
   renderQuestionEditorState();
+  renderAdminTests();
   setStatus("Admin workspace refreshed.");
 }
 
@@ -170,11 +206,14 @@ async function handleSubjectChange({ keepStatus = false } = {}) {
     state.selectedChapterId = "";
     state.selectedTopicId = "";
     state.currentQuestions = [];
+    state.selectedTestQuestionIds = new Set();
     state.editingQuestionId = "";
     state.unsupportedQuestionCount = 0;
     state.approvedFiguresByTopicId.clear();
     renderQuestions([]);
     renderQuestionReviewSummary([]);
+    renderTestBuilder();
+    renderAdminTests();
     clearQuestionForm({ keepStatus: true });
     renderAdminOverview();
     renderQuestionEditorState();
@@ -186,6 +225,8 @@ async function handleSubjectChange({ keepStatus = false } = {}) {
 
   const chapters = await apiRequest(`/subjects/${state.selectedSubjectId}/chapters`);
   state.chaptersBySubjectId.set(state.selectedSubjectId, chapters);
+  await loadSubjectQuestionTree(state.selectedSubjectId);
+  await loadAdminTestsForSelectedSubject();
   populateSelect(document.getElementById("chapter-select"), chapters, {
     valueKey: "id",
     labelBuilder: formatChapterLabel,
@@ -216,6 +257,7 @@ async function handleChapterChange({ keepStatus = false } = {}) {
 
   if (!state.selectedChapterId) {
     clearSelect(document.getElementById("topic-select"), "Choose topic");
+    state.topicsByChapterId.set("", []);
     state.selectedTopicId = "";
     state.currentQuestions = [];
     state.editingQuestionId = "";
@@ -223,6 +265,8 @@ async function handleChapterChange({ keepStatus = false } = {}) {
     state.approvedFiguresByTopicId.clear();
     renderQuestions([]);
     renderQuestionReviewSummary([]);
+    renderTestBuilder();
+    renderAdminTests();
     clearQuestionForm({ keepStatus: true });
     renderAdminOverview();
     renderQuestionEditorState();
@@ -242,6 +286,8 @@ async function handleChapterChange({ keepStatus = false } = {}) {
   });
   state.selectedTopicId = document.getElementById("topic-select").value || "";
   await handleTopicChange({ keepStatus: true });
+  renderTestBuilder();
+  renderAdminTests();
   if (!keepStatus) {
     setStatus("Chapter loaded.");
   }
@@ -253,9 +299,28 @@ async function handleTopicChange({ keepStatus = false } = {}) {
   await loadQuestionsForSelectedTopic({ keepStatus: true });
   renderAdminOverview();
   renderQuestionEditorState();
+  renderTestBuilder();
+  renderAdminTests();
   if (!keepStatus) {
     setStatus(state.selectedTopicId ? "Topic loaded." : "Select a topic to start authoring questions.");
   }
+}
+
+async function loadSubjectQuestionTree(subjectId) {
+  if (!subjectId) {
+    return;
+  }
+  const tree = await apiRequest(`/subjects/${subjectId}/question-tree`);
+  state.questionTreeBySubjectId.set(subjectId, tree);
+  pruneSelectedTestQuestions();
+}
+
+async function loadAdminTestsForSelectedSubject() {
+  if (!state.selectedSubjectId) {
+    return;
+  }
+  const tests = await apiRequest(`/admin/tests?subject_id=${encodeURIComponent(state.selectedSubjectId)}`);
+  state.testsBySubjectId.set(state.selectedSubjectId, tests);
 }
 
 async function createSubject() {
@@ -310,6 +375,123 @@ async function createTopic() {
   setStatus(`Created topic: ${topic.name}.`);
 }
 
+async function editSelectedSubject() {
+  const subject = state.subjects.find((item) => item.id === state.selectedSubjectId);
+  if (!subject) {
+    throw new Error("Choose a subject first.");
+  }
+  const name = window.prompt("Subject name", subject.name || "");
+  if (name === null) {
+    return;
+  }
+  const gradeText = window.prompt("Grade", String(subject.grade ?? ""));
+  if (gradeText === null) {
+    return;
+  }
+  const board = window.prompt("Board", subject.board || "");
+  if (board === null) {
+    return;
+  }
+  await apiRequest(`/subjects/${subject.id}`, "PATCH", {
+    name: name.trim(),
+    grade: Number(gradeText),
+    board: board.trim(),
+  });
+  await loadSubjects();
+  setStatus("Subject updated.");
+}
+
+async function deleteSelectedSubject() {
+  const subject = state.subjects.find((item) => item.id === state.selectedSubjectId);
+  if (!subject) {
+    throw new Error("Choose a subject first.");
+  }
+  if (!window.confirm(`Delete subject "${subject.name}" and all nested chapters, topics, concepts, and questions?`)) {
+    return;
+  }
+  await apiRequest(`/subjects/${subject.id}`, "DELETE");
+  state.selectedSubjectId = "";
+  state.selectedChapterId = "";
+  state.selectedTopicId = "";
+  await loadSubjects();
+  setStatus("Subject deleted.");
+}
+
+async function editSelectedChapter() {
+  const chapters = state.chaptersBySubjectId.get(state.selectedSubjectId) || [];
+  const chapter = chapters.find((item) => item.id === state.selectedChapterId);
+  if (!chapter) {
+    throw new Error("Choose a chapter first.");
+  }
+  const chapterNumberText = window.prompt("Chapter number", String(chapter.chapter_number ?? ""));
+  if (chapterNumberText === null) {
+    return;
+  }
+  const name = window.prompt("Chapter name", chapter.name || "");
+  if (name === null) {
+    return;
+  }
+  await apiRequest(`/chapters/${chapter.id}`, "PATCH", {
+    chapter_number: Number(chapterNumberText),
+    name: name.trim(),
+  });
+  await handleSubjectChange({ keepStatus: true });
+  setStatus("Chapter updated.");
+}
+
+async function deleteSelectedChapter() {
+  const chapters = state.chaptersBySubjectId.get(state.selectedSubjectId) || [];
+  const chapter = chapters.find((item) => item.id === state.selectedChapterId);
+  if (!chapter) {
+    throw new Error("Choose a chapter first.");
+  }
+  if (!window.confirm(`Delete chapter "${chapter.name}" and all nested topics, concepts, and questions?`)) {
+    return;
+  }
+  await apiRequest(`/chapters/${chapter.id}`, "DELETE");
+  state.selectedChapterId = "";
+  state.selectedTopicId = "";
+  await handleSubjectChange({ keepStatus: true });
+  setStatus("Chapter deleted.");
+}
+
+async function editSelectedTopic() {
+  const topics = state.topicsByChapterId.get(state.selectedChapterId) || [];
+  const topic = topics.find((item) => item.id === state.selectedTopicId);
+  if (!topic) {
+    throw new Error("Choose a topic first.");
+  }
+  const name = window.prompt("Topic name", topic.name || "");
+  if (name === null) {
+    return;
+  }
+  const displayOrderText = window.prompt("Display order", String(topic.display_order ?? ""));
+  if (displayOrderText === null) {
+    return;
+  }
+  await apiRequest(`/topics/${topic.id}`, "PATCH", {
+    name: name.trim(),
+    display_order: Number(displayOrderText),
+  });
+  await handleChapterChange({ keepStatus: true });
+  setStatus("Topic updated.");
+}
+
+async function deleteSelectedTopic() {
+  const topics = state.topicsByChapterId.get(state.selectedChapterId) || [];
+  const topic = topics.find((item) => item.id === state.selectedTopicId);
+  if (!topic) {
+    throw new Error("Choose a topic first.");
+  }
+  if (!window.confirm(`Delete topic "${topic.name}" and all nested concepts and questions?`)) {
+    return;
+  }
+  await apiRequest(`/topics/${topic.id}`, "DELETE");
+  state.selectedTopicId = "";
+  await handleChapterChange({ keepStatus: true });
+  setStatus("Topic deleted.");
+}
+
 async function loadApprovedFiguresForSelectedTopic() {
   if (!state.selectedTopicId) {
     clearQuestionImageChoices();
@@ -351,6 +533,7 @@ async function loadQuestionsForSelectedTopic({ keepStatus = false, preserveQuest
     clearQuestionImageChoices();
     renderQuestions([]);
     renderQuestionReviewSummary([]);
+    renderTestBuilder();
     clearQuestionForm({ keepStatus: true });
     renderAdminOverview();
     renderQuestionEditorState();
@@ -367,6 +550,8 @@ async function loadQuestionsForSelectedTopic({ keepStatus = false, preserveQuest
   state.editingQuestionId = state.currentQuestions.some((question) => question.id === candidateQuestionId) ? candidateQuestionId : "";
   renderQuestions(state.currentQuestions);
   renderQuestionReviewSummary(state.currentQuestions);
+  pruneSelectedTestQuestions();
+  renderTestBuilder();
 
   if (state.editingQuestionId) {
     const selectedQuestion = state.currentQuestions.find((question) => question.id === state.editingQuestionId);
@@ -382,6 +567,317 @@ async function loadQuestionsForSelectedTopic({ keepStatus = false, preserveQuest
   if (!keepStatus) {
       setStatus(`Loaded ${state.currentQuestions.length} editable question(s) for the selected topic.`);
     }
+}
+
+function renderTestBuilder() {
+  renderTestBuilderState();
+  renderTestBuilderSummary();
+  renderTestBuilderQuestionList();
+}
+
+function renderAdminTests() {
+  renderAdminTestsSummary();
+  renderAdminTestsList();
+}
+
+function renderTestBuilderState() {
+  const banner = document.getElementById("test-builder-state");
+  const generateButton = document.getElementById("generate-test-button");
+  const availableQuestions = getAvailableTestQuestionsInScope();
+  if (!state.selectedSubjectId) {
+    banner.textContent = "Choose a subject to load active published questions.";
+  } else if (!availableQuestions.length) {
+    banner.textContent = "No active published questions are available in the current scope.";
+  } else {
+    banner.textContent = `Creating a test for ${buildScopeLabel()}.`;
+  }
+  generateButton.disabled = state.isCreatingTest || !state.selectedAdminId || !state.selectedSubjectId || state.selectedTestQuestionIds.size === 0;
+  generateButton.textContent = state.isCreatingTest ? "Creating..." : "Create Test";
+}
+
+function renderTestBuilderSummary() {
+  const container = document.getElementById("test-builder-summary");
+  const availableQuestions = getAvailableTestQuestionsInScope();
+  if (!state.selectedSubjectId) {
+    container.innerHTML = "";
+    return;
+  }
+  const selectedQuestions = availableQuestions.filter((question) => state.selectedTestQuestionIds.has(question.id));
+  const hardSelectedCount = selectedQuestions.filter((question) => question.difficulty === "hard").length;
+  const configuredTimeLimit = Number(document.getElementById("test-time-limit-input")?.value || 30);
+  container.innerHTML = `
+    <div class="summary-grid">
+      <article class="summary-card">
+        <span class="helper-text">Available In Scope</span>
+        <strong>${escapeHtml(availableQuestions.length)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Selected</span>
+        <strong>${escapeHtml(selectedQuestions.length)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Hard Selected</span>
+        <strong>${escapeHtml(hardSelectedCount)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Scope</span>
+        <strong>${escapeHtml(buildScopeLabel())}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Time Limit</span>
+        <strong>${escapeHtml(configuredTimeLimit)} min</strong>
+      </article>
+    </div>
+    ${state.latestCreatedTest ? `
+      <article class="list-card">
+        <strong>Latest Created Test</strong>
+        <div>${escapeHtml(state.latestCreatedTest.title)}</div>
+        <div class="helper-text">Questions: ${escapeHtml(state.latestCreatedTest.question_count)} | Status: ${escapeHtml(state.latestCreatedTest.status || "published")}</div>
+      </article>
+    ` : ""}
+  `;
+}
+
+function renderTestBuilderQuestionList() {
+  const container = document.getElementById("test-builder-question-list");
+  const availableQuestions = getAvailableTestQuestionsInScope();
+  if (!state.selectedSubjectId) {
+    container.innerHTML = "<div class=\"list-card\">Select a subject to start building a test.</div>";
+    return;
+  }
+  if (!availableQuestions.length) {
+    container.innerHTML = "<div class=\"list-card\">No active published questions are available in the selected scope.</div>";
+    return;
+  }
+  container.innerHTML = "";
+  for (const question of availableQuestions) {
+    const card = document.createElement("label");
+    const isChecked = state.selectedTestQuestionIds.has(question.id);
+    card.className = `list-card test-select-card${isChecked ? " is-selected" : ""}`;
+    card.innerHTML = `
+      <div class="checkbox-row">
+        <input type="checkbox" data-test-question-id="${escapeHtml(question.id)}" ${isChecked ? "checked" : ""}>
+        <span><strong>${escapeHtml(question.text || "(missing text)")}</strong></span>
+      </div>
+      <div>${escapeHtml(String(question.question_format || "").toUpperCase())} | ${escapeHtml(question.difficulty)} | ${escapeHtml(question.type)}</div>
+      <div>Status: ${escapeHtml(question.status)} | ${escapeHtml(question.chapter_name)} | ${escapeHtml(question.topic_name)} | ${escapeHtml(question.concept_name)}</div>
+    `;
+    const checkbox = card.querySelector("input[type='checkbox']");
+    checkbox.addEventListener("change", () => {
+      toggleTestQuestionSelection(question.id, checkbox.checked);
+    });
+    container.appendChild(card);
+  }
+}
+
+function getAvailableTestQuestionsInScope() {
+  const tree = state.questionTreeBySubjectId.get(state.selectedSubjectId);
+  if (!tree?.chapters?.length) {
+    return [];
+  }
+  const questions = [];
+  for (const chapter of tree.chapters) {
+    if (state.selectedChapterId && chapter.id !== state.selectedChapterId) {
+      continue;
+    }
+    for (const topic of chapter.topics || []) {
+      if (state.selectedTopicId && topic.id !== state.selectedTopicId) {
+        continue;
+      }
+      for (const concept of topic.concepts || []) {
+        for (const question of concept.questions || []) {
+          if (!question.can_use_in_test) {
+            continue;
+          }
+          questions.push({
+            ...question,
+            chapter_id: chapter.id,
+            chapter_name: `Chapter ${chapter.chapter_number}: ${chapter.name}`,
+            topic_id: topic.id,
+            topic_name: topic.name,
+            concept_id: concept.id,
+            concept_name: concept.name,
+          });
+        }
+      }
+    }
+  }
+  return questions;
+}
+
+function toggleTestQuestionSelection(questionId, isSelected) {
+  if (isSelected) {
+    state.selectedTestQuestionIds.add(questionId);
+  } else {
+    state.selectedTestQuestionIds.delete(questionId);
+  }
+  renderTestBuilder();
+}
+
+function selectAllTestQuestionsInScope() {
+  for (const question of getAvailableTestQuestionsInScope()) {
+    state.selectedTestQuestionIds.add(question.id);
+  }
+  renderTestBuilder();
+  setStatus("Selected all active published questions in scope.");
+}
+
+function clearSelectedTestQuestions() {
+  const allowedIds = new Set(getAvailableTestQuestionsInScope().map((question) => question.id));
+  state.selectedTestQuestionIds = new Set([...state.selectedTestQuestionIds].filter((questionId) => !allowedIds.has(questionId)));
+  renderTestBuilder();
+  setStatus("Cleared test selection for the current scope.");
+}
+
+function pruneSelectedTestQuestions() {
+  const allowedIds = new Set(getAvailableTestQuestionsInScope().map((question) => question.id));
+  state.selectedTestQuestionIds = new Set([...state.selectedTestQuestionIds].filter((questionId) => allowedIds.has(questionId)));
+}
+
+async function generateSelectedTest() {
+  if (state.isCreatingTest) {
+    return;
+  }
+  if (!state.selectedAdminId) {
+    throw new Error("Choose an admin first.");
+  }
+  if (!state.selectedSubjectId) {
+    throw new Error("Choose a subject first.");
+  }
+  const selectedQuestionIds = getAvailableTestQuestionsInScope()
+    .filter((question) => state.selectedTestQuestionIds.has(question.id))
+    .map((question) => question.id);
+  if (!selectedQuestionIds.length) {
+    throw new Error("Select at least one active published question.");
+  }
+  const titleInput = document.getElementById("test-title-input");
+  const timeLimitInput = document.getElementById("test-time-limit-input");
+  const testTitle = titleInput.value.trim() || `Practice Test - ${buildScopeLabel()}`;
+  const timeLimitMinutes = Number(timeLimitInput.value || 30);
+  if (!Number.isFinite(timeLimitMinutes) || timeLimitMinutes < 1 || timeLimitMinutes > 300) {
+    throw new Error("Time limit must be between 1 and 300 minutes.");
+  }
+  state.isCreatingTest = true;
+  renderTestBuilder();
+  try {
+    const createdTest = await apiRequest("/tests/generate", "POST", {
+      created_by_admin_id: state.selectedAdminId,
+      title: testTitle,
+      subject_id: state.selectedSubjectId,
+      chapter_id: state.selectedChapterId || null,
+      topic_id: state.selectedTopicId || null,
+      selected_question_item_ids: selectedQuestionIds,
+      question_count: selectedQuestionIds.length,
+      hard_question_count: null,
+      time_limit_minutes: timeLimitMinutes,
+      is_custom_practice_template: false,
+    });
+    state.latestCreatedTest = {
+      id: createdTest.id,
+      title: createdTest.title,
+      question_count: createdTest.questions.length,
+      time_limit_minutes: createdTest.time_limit_minutes,
+      status: createdTest.status || "published",
+    };
+    await loadAdminTestsForSelectedSubject();
+    renderAdminTests();
+    titleInput.value = createdTest.title || testTitle;
+    setStatus(`Created published test: ${createdTest.title} with ${createdTest.questions.length} question(s) and ${createdTest.time_limit_minutes} minutes.`);
+  } finally {
+    state.isCreatingTest = false;
+    renderTestBuilder();
+  }
+}
+
+function renderAdminTestsSummary() {
+  const container = document.getElementById("admin-tests-summary");
+  if (!state.selectedSubjectId) {
+    container.innerHTML = "<div class=\"list-card\">Choose a subject to manage tests.</div>";
+    return;
+  }
+  const tests = state.testsBySubjectId.get(state.selectedSubjectId) || [];
+  const publishedCount = tests.filter((test) => test.status === "published").length;
+  const disabledCount = tests.filter((test) => test.status === "disabled").length;
+  container.innerHTML = `
+    <div class="summary-grid">
+      <article class="summary-card">
+        <span class="helper-text">Total Tests</span>
+        <strong>${escapeHtml(tests.length)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Active</span>
+        <strong>${escapeHtml(publishedCount)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Disabled</span>
+        <strong>${escapeHtml(disabledCount)}</strong>
+      </article>
+      <article class="summary-card">
+        <span class="helper-text">Subject Scope</span>
+        <strong>${escapeHtml(buildScopeLabel())}</strong>
+      </article>
+    </div>
+  `;
+}
+
+function renderAdminTestsList() {
+  const container = document.getElementById("admin-tests-list");
+  if (!state.selectedSubjectId) {
+    container.innerHTML = "";
+    return;
+  }
+  const tests = state.testsBySubjectId.get(state.selectedSubjectId) || [];
+  if (!tests.length) {
+    container.innerHTML = "<div class=\"list-card\">No tests exist yet for this subject.</div>";
+    return;
+  }
+  container.innerHTML = "";
+  for (const test of tests) {
+    const card = document.createElement("article");
+    const nextStatus = test.status === "published" ? "disabled" : "published";
+    const toggleLabel = test.status === "published" ? "Turn Off" : "Turn On";
+    card.className = "list-card";
+    card.innerHTML = `
+      <strong>${escapeHtml(test.title)}</strong>
+      <div>Status: ${escapeHtml(test.status)} | Time limit: ${escapeHtml(test.time_limit_minutes)} min</div>
+      <div>Questions: ${escapeHtml(test.question_count)} | Attempts: ${escapeHtml(test.attempt_count || 0)}</div>
+      <div class="helper-text">${escapeHtml(test.subject_name)} | Grade ${escapeHtml(test.subject_grade)} | ${escapeHtml(test.subject_board)}</div>
+      <div class="button-row">
+        <button class="secondary-button" type="button" data-test-toggle-id="${escapeHtml(test.id)}">${escapeHtml(toggleLabel)}</button>
+        <button class="destructive-button" type="button" data-test-delete-id="${escapeHtml(test.id)}">Delete Test</button>
+      </div>
+    `;
+    card.querySelector("[data-test-toggle-id]").addEventListener("click", () => {
+      toggleTestStatus(test.id, nextStatus).catch(handleUnexpectedError);
+    });
+    card.querySelector("[data-test-delete-id]").addEventListener("click", () => {
+      deleteManagedTest(test.id).catch(handleUnexpectedError);
+    });
+    container.appendChild(card);
+  }
+}
+
+async function toggleTestStatus(testId, status) {
+  if (!state.selectedAdminId) {
+    throw new Error("Choose an admin first.");
+  }
+  await apiRequest(`/tests/${testId}/status`, "PATCH", {
+    updated_by_admin_id: state.selectedAdminId,
+    status,
+  });
+  await loadAdminTestsForSelectedSubject();
+  renderAdminTests();
+  setStatus(`Test status updated to ${status}.`);
+}
+
+async function deleteManagedTest(testId) {
+  if (!state.selectedAdminId) {
+    throw new Error("Choose an admin first.");
+  }
+  await apiRequest(`/tests/${testId}?deleted_by_admin_id=${encodeURIComponent(state.selectedAdminId)}`, "DELETE");
+  await loadAdminTestsForSelectedSubject();
+  renderAdminTests();
+  setStatus("Test deleted.");
 }
 
 function renderQuestions(questions) {
@@ -664,6 +1160,18 @@ function renderAdminOverview() {
     </article>
   `;
 }
+
+function buildScopeLabel() {
+  const selectedSubject = state.subjects.find((subject) => subject.id === state.selectedSubjectId);
+  const selectedChapter = (state.chaptersBySubjectId.get(state.selectedSubjectId) || []).find((chapter) => chapter.id === state.selectedChapterId);
+  const selectedTopic = (state.topicsByChapterId.get(state.selectedChapterId) || []).find((topic) => topic.id === state.selectedTopicId);
+  return [
+    selectedSubject ? formatSubjectLabel(selectedSubject) : null,
+    selectedChapter ? formatChapterLabel(selectedChapter) : null,
+    selectedTopic ? selectedTopic.name : null,
+  ].filter(Boolean).join(" | ") || "No scope selected";
+}
+
 
 function renderQuestionEditorState() {
   const banner = document.getElementById("question-editor-state");

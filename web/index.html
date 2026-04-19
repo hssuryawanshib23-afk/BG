@@ -4,17 +4,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BrainGain Admin</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260417b">
+    <link rel="stylesheet" href="/static/styles.css?v=20260418b">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div>
           <p class="eyebrow">BrainGain Admin</p>
-          <h1>Manual Question Authoring</h1>
+          <h1>Question Authoring And Test Creation</h1>
           <div id="session-identity" class="session-pill">Logged in as admin</div>
           <p class="hero-copy">
-            Keep this simple: create the subject structure, add questions manually, and review the saved questions for the selected topic.
+            Create the subject structure, author questions, then build published tests for the selected subject, grade, and board.
           </p>
         </div>
         <div class="hero-actions">
@@ -27,7 +27,7 @@
         <section class="panel wide-panel">
           <div class="panel-heading">
             <h2>Workspace Snapshot</h2>
-            <p>Everything on this page stays focused on manual creation and review only.</p>
+            <p>Use this page to manage syllabus scope, review questions, and create tests from selected active questions.</p>
           </div>
           <div id="admin-overview" class="result-stack top-gap"></div>
         </section>
@@ -55,6 +55,14 @@
               <span>Topic</span>
               <select id="topic-select"></select>
             </label>
+          </div>
+          <div class="button-row top-gap">
+            <button id="edit-subject-button" class="secondary-button" type="button">Edit Subject</button>
+            <button id="delete-subject-button" class="destructive-button" type="button">Delete Subject</button>
+            <button id="edit-chapter-button" class="secondary-button" type="button">Edit Chapter</button>
+            <button id="delete-chapter-button" class="destructive-button" type="button">Delete Chapter</button>
+            <button id="edit-topic-button" class="secondary-button" type="button">Edit Topic</button>
+            <button id="delete-topic-button" class="destructive-button" type="button">Delete Topic</button>
           </div>
         </section>
 
@@ -196,10 +204,46 @@
           <div id="question-review-summary" class="result-stack top-gap"></div>
           <div id="questions-list" class="list-stack"></div>
         </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Test Builder</h2>
+            <p>Create one published test for the selected subject, grade, and board by selecting the exact questions to include.</p>
+          </div>
+          <div id="test-builder-state" class="status-banner">Choose a subject to load active published questions.</div>
+          <div class="form-stack top-gap">
+            <div class="two-column-grid">
+              <label class="field">
+                <span>Test Title</span>
+                <input id="test-title-input" placeholder="Class 9 Physics Practice Test">
+              </label>
+              <label class="field">
+                <span>Time Limit (Minutes)</span>
+                <input id="test-time-limit-input" type="number" min="1" max="300" value="30">
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="select-all-test-questions-button" class="secondary-button" type="button">Select All In Scope</button>
+              <button id="clear-selected-test-questions-button" class="secondary-button" type="button">Clear Selection</button>
+              <button id="generate-test-button" class="primary-button" type="button">Create Test</button>
+            </div>
+          </div>
+          <div id="test-builder-summary" class="result-stack top-gap"></div>
+          <div id="test-builder-question-list" class="list-stack"></div>
+        </section>
+
+        <section class="panel wide-panel">
+          <div class="panel-heading">
+            <h2>Manage Tests</h2>
+            <p>Review existing tests for the selected subject, toggle them on or off, or delete them entirely.</p>
+          </div>
+          <div id="admin-tests-summary" class="result-stack top-gap"></div>
+          <div id="admin-tests-list" class="list-stack"></div>
+        </section>
       </main>
     </div>
 
-    <script src="/static/auth.js?v=20260417b" defer></script>
-    <script src="/static/app.js?v=20260417b" defer></script>
+    <script src="/static/auth.js?v=20260418b" defer></script>
+    <script src="/static/app.js?v=20260418b" defer></script>
   </body>
 </html>

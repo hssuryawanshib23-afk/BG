@@ -391,6 +391,22 @@ def write_figure_review_manifest(output_directory: Path, pages: list[dict[str, o
     return review_manifest_path
 
 
+def write_combined_text_output(output_directory: Path, pages: list[dict[str, object]]) -> Path:
+    combined_text_path = output_directory / "all_pages_text.txt"
+    combined_sections: list[str] = []
+
+    for page in pages:
+        page_number = int(page["page_number"])
+        text_path = Path(str(page["text_path"]))
+        page_text = text_path.read_text(encoding="utf-8")
+        combined_sections.append(f"===== Page {page_number:02d} =====")
+        combined_sections.append(page_text)
+
+    combined_text = "\n\n".join(combined_sections).strip() + "\n"
+    combined_text_path.write_text(combined_text, encoding="utf-8")
+    return combined_text_path
+
+
 def process_book_file(book_file_path: Path, ocr_engine: RapidOCR) -> Path:
     output_directory = build_output_directory_for_book(book_file_path)
     page_images_directory = output_directory / "page_images"
@@ -425,6 +441,7 @@ def process_book_file(book_file_path: Path, ocr_engine: RapidOCR) -> Path:
         pages.append(page_data)
 
     review_manifest_path = write_figure_review_manifest(output_directory, pages)
+    combined_text_path = write_combined_text_output(output_directory, pages)
     manifest_path = output_directory / "manifest.json"
     manifest_path.write_text(
         json.dumps(
@@ -434,6 +451,7 @@ def process_book_file(book_file_path: Path, ocr_engine: RapidOCR) -> Path:
                 "page_count": len(pages),
                 "figure_count": sum(int(page["figure_count"]) for page in pages),
                 "figure_review_manifest_path": str(review_manifest_path),
+                "combined_text_path": str(combined_text_path),
                 "pages": pages,
             },
             indent=2,

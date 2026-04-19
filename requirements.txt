@@ -1,6 +1,7 @@
 fastapi
 numpy
 opencv-python
+psycopg[binary]
 python-multipart
 rapidocr-onnxruntime
 uvicorn

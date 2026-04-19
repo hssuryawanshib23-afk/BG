@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
-data/*.sqlite3
-data/*.sqlite3-*
-data/*.db
-data/uploads/
+data/
 OCR_Output/
+Books/
+.graphify/

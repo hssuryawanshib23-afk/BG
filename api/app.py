@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 from datetime import datetime
@@ -14,6 +15,7 @@ from fastapi import FastAPI
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi import UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -67,6 +69,15 @@ DEMO_CREDENTIALS = {
 }
 
 app = FastAPI(title="BrainGain API")
+cors_origins = [origin.strip() for origin in os.environ.get("BRAINGAIN_CORS_ORIGINS", "").split(",") if origin.strip()]
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 WEB_DIRECTORY = PROJECT_DIRECTORY / "web"
 UPLOAD_DIRECTORY = PROJECT_DIRECTORY / "data" / "uploads"
 QUESTION_BANK_UPLOAD_DIRECTORY = UPLOAD_DIRECTORY / "question_banks"
@@ -80,8 +91,19 @@ class SubjectCreateRequest(BaseModel):
     board: str
 
 
+class SubjectUpdateRequest(BaseModel):
+    name: str
+    grade: int
+    board: str
+
+
 class ChapterCreateRequest(BaseModel):
     subject_id: str
+    chapter_number: int
+    name: str
+
+
+class ChapterUpdateRequest(BaseModel):
     chapter_number: int
     name: str
 
@@ -92,8 +114,18 @@ class TopicCreateRequest(BaseModel):
     display_order: int
 
 
+class TopicUpdateRequest(BaseModel):
+    name: str
+    display_order: int
+
+
 class ConceptCreateRequest(BaseModel):
     topic_id: str
+    name: str
+    display_order: int
+
+
+class ConceptUpdateRequest(BaseModel):
     name: str
     display_order: int
 
@@ -219,6 +251,7 @@ class TestCreateRequest(BaseModel):
     type_filters: list[Literal["definition", "identification", "trap", "application", "comparison", "reasoning"]] = Field(default_factory=list)
     question_count: int
     hard_question_count: int | None = None
+    time_limit_minutes: int | None = Field(default=None, ge=1, le=300)
     is_custom_practice_template: bool = False
     selected_question_item_ids: list[str] = Field(default_factory=list)
     selected_question_ids: list[str] = Field(default_factory=list)
@@ -258,6 +291,11 @@ class AttemptAnswerUpdateRequest(BaseModel):
 
 class AttemptSubmitRequest(BaseModel):
     answers: list[AttemptAnswerSubmission] = Field(default_factory=list)
+
+
+class TestStatusUpdateRequest(BaseModel):
+    updated_by_admin_id: str
+    status: Literal["published", "disabled"]
 
 
 class FigureReviewManifestImportRequest(BaseModel):
@@ -445,6 +483,31 @@ def list_subjects() -> list[dict[str, object]]:
     return convert_rows_to_dicts(rows)
 
 
+@app.patch("/subjects/{subject_id}")
+def update_subject(subject_id: str, request: SubjectUpdateRequest) -> dict[str, object]:
+    now = build_timestamp()
+    with build_connection() as connection:
+        ensure_subject_exists(connection, subject_id)
+        connection.execute(
+            """
+            UPDATE subjects
+            SET name = ?, grade = ?, board = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (request.name.strip(), request.grade, request.board.strip(), now, subject_id),
+        )
+        row = connection.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+    return convert_row_to_dict(row) or {}
+
+
+@app.delete("/subjects/{subject_id}")
+def delete_subject(subject_id: str) -> dict[str, object]:
+    with build_connection() as connection:
+        ensure_subject_exists(connection, subject_id)
+        connection.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
+    return {"deleted_subject_id": subject_id}
+
+
 @app.post("/chapters")
 def create_chapter(request: ChapterCreateRequest) -> dict[str, object]:
     now = build_timestamp()
@@ -471,6 +534,31 @@ def list_chapters(subject_id: str) -> list[dict[str, object]]:
             (subject_id,),
         ).fetchall()
     return convert_rows_to_dicts(rows)
+
+
+@app.patch("/chapters/{chapter_id}")
+def update_chapter(chapter_id: str, request: ChapterUpdateRequest) -> dict[str, object]:
+    now = build_timestamp()
+    with build_connection() as connection:
+        ensure_chapter_exists(connection, chapter_id)
+        connection.execute(
+            """
+            UPDATE chapters
+            SET chapter_number = ?, name = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (request.chapter_number, request.name.strip(), now, chapter_id),
+        )
+        row = connection.execute("SELECT * FROM chapters WHERE id = ?", (chapter_id,)).fetchone()
+    return convert_row_to_dict(row) or {}
+
+
+@app.delete("/chapters/{chapter_id}")
+def delete_chapter(chapter_id: str) -> dict[str, object]:
+    with build_connection() as connection:
+        ensure_chapter_exists(connection, chapter_id)
+        connection.execute("DELETE FROM chapters WHERE id = ?", (chapter_id,))
+    return {"deleted_chapter_id": chapter_id}
 
 
 @app.post("/topics")
@@ -501,6 +589,31 @@ def list_topics(chapter_id: str) -> list[dict[str, object]]:
     return convert_rows_to_dicts(rows)
 
 
+@app.patch("/topics/{topic_id}")
+def update_topic(topic_id: str, request: TopicUpdateRequest) -> dict[str, object]:
+    now = build_timestamp()
+    with build_connection() as connection:
+        ensure_topic_exists(connection, topic_id)
+        connection.execute(
+            """
+            UPDATE topics
+            SET name = ?, display_order = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (request.name.strip(), request.display_order, now, topic_id),
+        )
+        row = connection.execute("SELECT * FROM topics WHERE id = ?", (topic_id,)).fetchone()
+    return convert_row_to_dict(row) or {}
+
+
+@app.delete("/topics/{topic_id}")
+def delete_topic(topic_id: str) -> dict[str, object]:
+    with build_connection() as connection:
+        ensure_topic_exists(connection, topic_id)
+        connection.execute("DELETE FROM topics WHERE id = ?", (topic_id,))
+    return {"deleted_topic_id": topic_id}
+
+
 @app.post("/concepts")
 def create_concept(request: ConceptCreateRequest) -> dict[str, object]:
     now = build_timestamp()
@@ -527,6 +640,31 @@ def list_concepts(topic_id: str) -> list[dict[str, object]]:
             (topic_id,),
         ).fetchall()
     return convert_rows_to_dicts(rows)
+
+
+@app.patch("/concepts/{concept_id}")
+def update_concept(concept_id: str, request: ConceptUpdateRequest) -> dict[str, object]:
+    now = build_timestamp()
+    with build_connection() as connection:
+        ensure_concept_exists(connection, concept_id)
+        connection.execute(
+            """
+            UPDATE concepts
+            SET name = ?, display_order = ?, source_concept_key = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (request.name.strip(), request.display_order, request.name.strip(), now, concept_id),
+        )
+        row = connection.execute("SELECT * FROM concepts WHERE id = ?", (concept_id,)).fetchone()
+    return convert_row_to_dict(row) or {}
+
+
+@app.delete("/concepts/{concept_id}")
+def delete_concept(concept_id: str) -> dict[str, object]:
+    with build_connection() as connection:
+        ensure_concept_exists(connection, concept_id)
+        connection.execute("DELETE FROM concepts WHERE id = ?", (concept_id,))
+    return {"deleted_concept_id": concept_id}
 
 
 @app.post("/figure-review/import")
@@ -1249,13 +1387,14 @@ def generate_test(request: TestCreateRequest) -> dict[str, object]:
                 hard_question_count=hard_question_count,
             )
             actual_question_count = request.question_count
+        resolved_time_limit_minutes = request.time_limit_minutes or calculate_attempt_duration_minutes(actual_question_count)
         connection.execute(
             """
             INSERT INTO tests (
-                id, created_by_admin_id, title, subject_id, chapter_id, topic_id, status, question_count,
+                id, created_by_admin_id, title, subject_id, chapter_id, topic_id, status, time_limit_minutes, question_count,
                 hard_question_count, is_custom_practice_template, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 test_id,
@@ -1265,6 +1404,7 @@ def generate_test(request: TestCreateRequest) -> dict[str, object]:
                 resolved_chapter_id,
                 request.topic_id,
                 "published",
+                resolved_time_limit_minutes,
                 actual_question_count,
                 hard_question_count,
                 1 if request.is_custom_practice_template else 0,
@@ -1283,6 +1423,32 @@ def generate_test(request: TestCreateRequest) -> dict[str, object]:
                 (build_identifier(), test_id, str(row["question_item_id"]), str(row["question_revision_id"]), display_order, now),
             )
         return build_test_payload(connection, test_id, include_answers=True)
+
+
+@app.get("/admin/tests")
+def list_admin_tests(subject_id: str | None = None) -> list[dict[str, object]]:
+    with build_connection() as connection:
+        query = """
+            SELECT
+                tests.*,
+                subjects.name AS subject_name,
+                subjects.grade AS subject_grade,
+                subjects.board AS subject_board,
+                chapters.name AS chapter_name,
+                chapters.chapter_number AS chapter_number,
+                COUNT(DISTINCT attempts.id) AS attempt_count
+            FROM tests
+            INNER JOIN subjects ON subjects.id = tests.subject_id
+            LEFT JOIN chapters ON chapters.id = tests.chapter_id
+            LEFT JOIN attempts ON attempts.test_id = tests.id
+        """
+        parameters: list[object] = []
+        if subject_id:
+            query += " WHERE tests.subject_id = ?"
+            parameters.append(subject_id)
+        query += " GROUP BY tests.id ORDER BY tests.created_at DESC"
+        rows = connection.execute(query, parameters).fetchall()
+    return convert_rows_to_dicts(rows)
 
 
 @app.get("/tests")
@@ -1304,8 +1470,8 @@ def list_tests(subject_id: str | None = None, chapter_id: str | None = None) -> 
             LEFT JOIN test_question_revisions ON test_question_revisions.test_id = tests.id
             LEFT JOIN attempts ON attempts.test_id = tests.id
         """
-        clauses: list[str] = []
-        parameters: list[object] = []
+        clauses: list[str] = ["tests.status = ?"]
+        parameters: list[object] = ["published"]
         if subject_id:
             clauses.append("tests.subject_id = ?")
             parameters.append(subject_id)
@@ -1325,6 +1491,50 @@ def get_test(test_id: str) -> dict[str, object]:
         return build_test_payload(connection, test_id, include_answers=True)
 
 
+@app.patch("/tests/{test_id}/status")
+def update_test_status(test_id: str, request: TestStatusUpdateRequest) -> dict[str, object]:
+    now = build_timestamp()
+    with build_connection() as connection:
+        ensure_admin_exists(connection, request.updated_by_admin_id)
+        test_row = connection.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if test_row is None:
+            raise HTTPException(status_code=404, detail="Test not found")
+        connection.execute(
+            "UPDATE tests SET status = ?, updated_at = ? WHERE id = ?",
+            (request.status, now, test_id),
+        )
+        insert_admin_activity_log(
+            connection,
+            request.updated_by_admin_id,
+            action_type="test_status_updated",
+            entity_type="test",
+            entity_id=test_id,
+            summary=f"Updated test status to {request.status}",
+            details={"status": request.status},
+        )
+        return build_test_payload(connection, test_id, include_answers=True)
+
+
+@app.delete("/tests/{test_id}")
+def delete_test(test_id: str, deleted_by_admin_id: str) -> dict[str, object]:
+    with build_connection() as connection:
+        ensure_admin_exists(connection, deleted_by_admin_id)
+        test_row = connection.execute("SELECT * FROM tests WHERE id = ?", (test_id,)).fetchone()
+        if test_row is None:
+            raise HTTPException(status_code=404, detail="Test not found")
+        connection.execute("DELETE FROM tests WHERE id = ?", (test_id,))
+        insert_admin_activity_log(
+            connection,
+            deleted_by_admin_id,
+            action_type="test_deleted",
+            entity_type="test",
+            entity_id=test_id,
+            summary="Deleted test",
+            details={"title": test_row["title"]},
+        )
+    return {"deleted": True, "id": test_id}
+
+
 @app.post("/students/ensure")
 def ensure_student(request: StudentEnsureRequest) -> dict[str, object]:
     with build_connection() as connection:
@@ -1338,6 +1548,23 @@ def start_attempt(request: AttemptStartRequest) -> dict[str, object]:
     with build_connection() as connection:
         test_data = build_test_payload(connection, request.test_id, include_answers=False)
         student = get_or_create_student(connection, request.full_name, request.roll_number, request.email)
+        existing_attempt_row = connection.execute(
+            """
+            SELECT id
+            FROM attempts
+            WHERE test_id = ? AND student_id = ? AND status = 'in_progress'
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """,
+            (request.test_id, student["id"]),
+        ).fetchone()
+        if existing_attempt_row is not None:
+            existing_attempt_id = str(existing_attempt_row["id"])
+            existing_attempt = maybe_auto_submit_attempt(connection, existing_attempt_id)
+            if str(existing_attempt.get("status")) == "in_progress":
+                attempt_payload = build_attempt_payload(connection, existing_attempt_id, include_answers=False, include_results=False)
+                attempt_payload["was_resumed"] = True
+                return attempt_payload
         connection.execute(
             """
             INSERT INTO attempts (
@@ -1360,7 +1587,9 @@ def start_attempt(request: AttemptStartRequest) -> dict[str, object]:
                 earned_score=0.0,
                 now=now,
             )
-        return build_attempt_payload(connection, attempt_id, include_answers=False, include_results=False)
+        attempt_payload = build_attempt_payload(connection, attempt_id, include_answers=False, include_results=False)
+        attempt_payload["was_resumed"] = False
+        return attempt_payload
 
 
 @app.get("/attempts/{attempt_id}")
@@ -1435,6 +1664,42 @@ def get_attempt_results(attempt_id: str) -> dict[str, object]:
         if attempt["status"] == "in_progress":
             raise HTTPException(status_code=400, detail="Attempt has not been submitted yet")
         return attempt
+
+
+@app.get("/students/results")
+def list_student_results(email: str | None = None, full_name: str | None = None, roll_number: str | None = None) -> list[dict[str, object]]:
+    normalized_email = email.strip().lower() if email else None
+    normalized_name = full_name.strip() if full_name else None
+    normalized_roll_number = roll_number.strip() if roll_number else None
+    if not normalized_email and not normalized_name:
+        raise HTTPException(status_code=400, detail="Student email or full_name is required")
+    with build_connection() as connection:
+        student_query = "SELECT * FROM students WHERE "
+        parameters: list[object] = []
+        if normalized_email:
+            student_query += "lower(email) = ?"
+            parameters.append(normalized_email)
+        elif normalized_roll_number:
+            student_query += "full_name = ? AND roll_number = ?"
+            parameters.extend([normalized_name, normalized_roll_number])
+        else:
+            student_query += "full_name = ?"
+            parameters.append(normalized_name)
+        student_query += " ORDER BY updated_at DESC, created_at DESC LIMIT 1"
+        student_row = connection.execute(student_query, parameters).fetchone()
+        if student_row is None:
+            return []
+        attempt_rows = connection.execute(
+            """
+            SELECT id
+            FROM attempts
+            WHERE student_id = ? AND status = 'submitted'
+            ORDER BY submitted_at DESC, updated_at DESC
+            LIMIT 10
+            """,
+            (student_row["id"],),
+        ).fetchall()
+        return [build_attempt_payload(connection, str(row["id"]), include_answers=True, include_results=True) for row in attempt_rows]
 
 
 @app.get("/admin-activity")
@@ -2184,7 +2449,10 @@ def build_test_payload(connection, test_id: str, include_answers: bool) -> dict[
         revision_payload["question_item_id"] = str(row["question_item_id"])
         revision_payload["display_order"] = row["display_order"]
         test_data["questions"].append(revision_payload)
-    test_data["time_limit_minutes"] = calculate_attempt_duration_minutes(len(test_data["questions"]))
+    configured_time_limit = test_data.get("time_limit_minutes")
+    if configured_time_limit is None:
+        configured_time_limit = calculate_attempt_duration_minutes(len(test_data["questions"]))
+    test_data["time_limit_minutes"] = int(configured_time_limit)
     return test_data
 
 

@@ -1,65 +1,43 @@
 # BrainGain
 
-BrainGain converts textbook content into a structured, revisioned question bank that admins can review, publish, edit safely, and use for both admin-created tests and student practice tests.
+BrainGain is a FastAPI + SQLite prototype for building a revisioned question bank, generating published tests, and letting students take scored attempts.
 
-## Current Scope
-- OCR textbooks and extract figure candidates
-- Review and approve figures
-- Import AI-generated question banks through a versioned JSON contract
-- Materialize questions into relational storage
-- Support immutable question revision history
-- Generate tests from active published questions
-- Let students take tests and receive scored results
+## What Works
+- syllabus structure: `subjects -> chapters -> topics -> concepts`
+- OCR/figure review pipeline for textbook assets
+- AI question-bank import with validation and materialization
+- immutable question revisions and published snapshots
+- test generation from active published questions
+- student attempt flow for `mcq`, `msq`, `nat`, and `match`
 
-## Supported Question Formats
-- `mcq`
-- `msq`
-- `nat`
-- `match`
-
-## Current Commands
+## Run
 ```bash
 pip3 install --break-system-packages -r requirements.txt
 python3 run_api.py
 python3 smoke_test_product.py
 ```
 
-## Current Local Safety Behavior
-- On startup, BrainGain detects the legacy pre-revision SQLite schema and automatically moves it aside to a timestamped backup before creating the current schema.
-- This avoids booting the new code against stale local tables such as `questions` and `question_bank_imports`.
+## Graphify Pack
+`BrainGain` now includes a generated `.graphify/` folder that acts as a high-signal project map for LLMs.
 
-## Current Backend Shape
-- FastAPI API in `api/app.py`
-- Database bootstrap in `api/database.py`
-- AI import validation and materialization in `api/question_bank_import.py`
-- Local development database defaults to SQLite
-- Production target remains PostgreSQL
+Use it like this:
+- start with `.graphify/llm_context.md`
+- inspect `.graphify/graph.json` for file, symbol, and import relationships
+- open raw files only after locating the relevant paths in the graph
 
-## Current Data Model
-- `subjects -> chapters -> topics -> concepts`
-- `question_items` are stable logical questions
-- `question_revisions` are immutable content snapshots
-- Tests store exact revision snapshots
-- Attempts score against those stored snapshots
+Regenerate the pack after project changes:
+```bash
+python3 scripts/build_graphify.py
+```
 
-## Current AI Import Principle
-- JSON is a transport contract only
-- The system validates and normalizes the payload
-- The system stores the raw payload for audit
-- The system decomposes the content into relational rows
-- The system never uses raw JSON as the operational source of truth
+## Main Files
+- `api/app.py`: routes and business flow
+- `api/database.py`: schema bootstrap and connection helpers
+- `api/question_bank_import.py`: import validation/materialization
+- `web/`: admin, login, and student static UI
+- `smoke_test_product.py`: end-to-end verification
 
-## Verification Snapshot
-- `python3 smoke_test_product.py` verifies:
-  - AI import batch creation
-  - import materialization
-  - question publishing
-  - manual draft question creation
-  - test generation
-  - student attempt scoring across MCQ, MSQ, NAT, and match
-
-## Frontend Snapshot
-- Student practice flow now handles `mcq`, `msq`, `nat`, and `match`.
-- The admin UI remains partly compatibility-driven:
-  - legacy admin manual question screens are bridged to the new revisioned backend
-  - full revision-history UX still needs a dedicated frontend pass
+## Notes
+- Local startup protects against the old SQLite schema by moving the legacy file aside before creating the current schema.
+- JSON imports are treated as transport input, not the live source of truth.
+- The student UI only lists published tests and resumes an in-progress attempt for the same student and test.
