@@ -83,6 +83,14 @@ UPLOAD_DIRECTORY = PROJECT_DIRECTORY / "data" / "uploads"
 QUESTION_BANK_UPLOAD_DIRECTORY = UPLOAD_DIRECTORY / "question_banks"
 FIGURE_IMPORT_UPLOAD_DIRECTORY = UPLOAD_DIRECTORY / "figure_imports"
 QUESTION_IMAGE_UPLOAD_DIRECTORY = UPLOAD_DIRECTORY / "question_images"
+OCR_OUTPUT_DIRECTORY = PROJECT_DIRECTORY / "OCR_Output"
+ENABLE_DEMO_LOGIN = os.environ.get("BRAINGAIN_ENABLE_DEMO_LOGIN", "1").strip().lower() not in {"0", "false", "no"}
+ENABLE_PROJECT_FILE_PROXY = os.environ.get("BRAINGAIN_ENABLE_PROJECT_FILE_PROXY", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
+ALLOWED_PROJECT_FILE_ROOTS = [UPLOAD_DIRECTORY.resolve(), OCR_OUTPUT_DIRECTORY.resolve()]
 
 
 class SubjectCreateRequest(BaseModel):
@@ -421,12 +429,34 @@ def get_student_practice_alias() -> FileResponse:
     return FileResponse(WEB_DIRECTORY / "student.html")
 
 
+@app.get("/auth/config")
+def get_auth_config() -> dict[str, bool]:
+    return {
+        "demo_login_enabled": ENABLE_DEMO_LOGIN,
+    }
+
+
+def is_project_file_path_allowed(requested_path: Path) -> bool:
+    resolved_path = requested_path.resolve()
+    for root_path in ALLOWED_PROJECT_FILE_ROOTS:
+        try:
+            resolved_path.relative_to(root_path)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 @app.get("/project-files/{file_path:path}")
 def get_project_file(file_path: str) -> FileResponse:
+    if not ENABLE_PROJECT_FILE_PROXY:
+        raise HTTPException(status_code=404, detail="Project file proxy is disabled")
     requested_path = (PROJECT_DIRECTORY / file_path).resolve()
     project_directory = PROJECT_DIRECTORY.resolve()
     if not str(requested_path).startswith(str(project_directory)):
         raise HTTPException(status_code=400, detail="File path is outside the project directory")
+    if not is_project_file_path_allowed(requested_path):
+        raise HTTPException(status_code=403, detail="File path is not allowed")
     if not requested_path.exists() or not requested_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(requested_path)
@@ -439,6 +469,8 @@ def get_health() -> dict[str, str]:
 
 @app.post("/demo-login")
 def demo_login(request: DemoLoginRequest) -> dict[str, str]:
+    if not ENABLE_DEMO_LOGIN:
+        raise HTTPException(status_code=404, detail="Demo login is disabled")
     credential = DEMO_CREDENTIALS.get(request.role)
     if credential is None:
         raise HTTPException(status_code=400, detail="Unsupported role")

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BrainGain Login</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260322e">
+    <link rel="stylesheet" href="/static/styles.css?v=20260422a">
   </head>
   <body>
     <div class="page-shell">
@@ -13,7 +13,7 @@
           <p class="eyebrow">BrainGain</p>
           <h1>Login</h1>
           <p class="hero-copy">
-            Choose whether you are an admin or a student, then log in with the demo credentials below.
+            Choose whether you are an admin or a student, then sign in to continue.
           </p>
         </div>
       </header>
@@ -22,7 +22,7 @@
         <section class="panel">
           <div class="panel-heading">
             <h2>Role And Login</h2>
-            <p>Admins manage content and generate tests. Students take those tests. Changing the role below auto-fills the matching demo credentials.</p>
+            <p>Admins manage content and generate tests. Students take those tests.</p>
           </div>
           <div id="login-status-banner" class="status-banner">Choose a role and sign in.</div>
           <form id="login-form" class="form-stack">
@@ -45,10 +45,10 @@
           </form>
         </section>
 
-        <section class="panel">
+        <section id="demo-credentials-panel" class="panel">
           <div class="panel-heading">
             <h2>Demo Credentials</h2>
-            <p>These are hardcoded demo credentials for this prototype.</p>
+            <p>These credentials are shown only when demo login is enabled.</p>
           </div>
           <div class="form-stack">
             <article class="list-card">
@@ -66,7 +66,7 @@
       </main>
     </div>
 
-    <script src="/static/auth.js?v=20260322e" defer></script>
-    <script src="/static/login.js?v=20260322e" defer></script>
+    <script src="/static/auth.js?v=20260422a" defer></script>
+    <script src="/static/login.js?v=20260422a" defer></script>
   </body>
 </html>

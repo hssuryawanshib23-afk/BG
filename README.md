@@ -17,6 +17,8 @@ python3 run_api.py
 python3 smoke_test_product.py
 ```
 
+Use `.env.example` as the baseline for deployment environment variables.
+
 ## Graphify Pack
 `BrainGain` now includes a generated `.graphify/` folder that acts as a high-signal project map for LLMs.
 
@@ -41,3 +43,5 @@ python3 scripts/build_graphify.py
 - Local startup protects against the old SQLite schema by moving the legacy file aside before creating the current schema.
 - JSON imports are treated as transport input, not the live source of truth.
 - The student UI only lists published tests and resumes an in-progress attempt for the same student and test.
+- `BRAINGAIN_ENABLE_DEMO_LOGIN` controls whether `/demo-login` is available.
+- `BRAINGAIN_ENABLE_PROJECT_FILE_PROXY` controls whether `/project-files/...` can serve uploaded assets.

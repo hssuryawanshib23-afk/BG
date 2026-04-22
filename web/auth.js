@@ -1,4 +1,4 @@
-const BRAINGAIN_AUTH_STORAGE_KEY = "braingain_demo_auth";
+const BRAINGAIN_AUTH_STORAGE_KEY = "braingain_auth_session";
 
 function getAuthSession() {
   try {

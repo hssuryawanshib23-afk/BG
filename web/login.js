@@ -1,3 +1,7 @@
+const loginState = {
+  isDemoLoginEnabled: true,
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   const existingSession = getAuthSession();
   if (existingSession?.redirect_path) {
@@ -6,8 +10,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   bindEvents();
-  applyCredentialHint();
+  initializeLogin().catch(handleUnexpectedError);
 });
+
+async function initializeLogin() {
+  const authConfig = await apiRequest("/auth/config");
+  loginState.isDemoLoginEnabled = Boolean(authConfig?.demo_login_enabled);
+  toggleDemoCredentialsPanel(loginState.isDemoLoginEnabled);
+  applyCredentialHint();
+}
 
 function bindEvents() {
   document.getElementById("login-role-select").addEventListener("change", applyCredentialHint);
@@ -18,6 +29,10 @@ function bindEvents() {
 }
 
 function applyCredentialHint() {
+  if (!loginState.isDemoLoginEnabled) {
+    setStatus("Demo login is disabled on this deployment.");
+    return;
+  }
   const role = document.getElementById("login-role-select").value;
   if (role === "admin") {
     document.getElementById("login-username-input").value = "admin@braingain.local";
@@ -31,6 +46,9 @@ function applyCredentialHint() {
 }
 
 async function login() {
+  if (!loginState.isDemoLoginEnabled) {
+    throw new Error("Demo login is disabled. Configure real authentication before using this deployment.");
+  }
   const payload = {
     role: document.getElementById("login-role-select").value,
     username: document.getElementById("login-username-input").value.trim(),
@@ -39,6 +57,14 @@ async function login() {
   const response = await apiRequest("/demo-login", "POST", payload);
   setAuthSession(response);
   window.location.href = response.redirect_path;
+}
+
+function toggleDemoCredentialsPanel(isVisible) {
+  const panel = document.getElementById("demo-credentials-panel");
+  if (!panel) {
+    return;
+  }
+  panel.style.display = isVisible ? "" : "none";
 }
 
 async function apiRequest(url, method = "GET", body = undefined) {

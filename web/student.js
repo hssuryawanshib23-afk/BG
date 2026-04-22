@@ -1,7 +1,9 @@
 const projectRoot = "/home/harsh-suryawanshi/projects/BrainGain";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "braingain_active_attempt_id";
+const LATEST_RESULT_STORAGE_KEY = "braingain_latest_submitted_attempt";
 const DEFAULT_ATTEMPT_DURATION_MINUTES = 30;
 const SECONDS_PER_QUESTION = 120;
+const RUNNER_WINDOW_NAME = "braingain_attempt_runner";
 
 const state = {
   tests: [],
@@ -10,6 +12,8 @@ const state = {
   activeQuestionIndex: 0,
   autosaveHandle: null,
   timerIntervalId: null,
+  runnerWindow: null,
+  studentResults: [],
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -17,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!session) {
     return;
   }
+  hydrateStudentIdentity(session);
   renderSessionIdentity("student-session-identity", "Student");
   bindLogoutButton();
   bindEvents();
@@ -24,16 +29,35 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAttempt(null);
   renderResults(null);
   renderStudentOverview();
+  applyPageMode();
+  bindDashboardEvents();
   initializePage().catch(handleUnexpectedError);
 });
 
 async function initializePage() {
   await loadTests({ showStatus: false });
   await restoreAttemptFromStorage();
+  await loadStudentResults({ showStatus: false });
   renderStudentOverview();
   if (!state.currentAttempt) {
     setStatus(state.tests.length ? "Choose a test to begin." : "No tests are available yet.");
   }
+}
+
+function bindDashboardEvents() {
+  for (const elementId of ["student-name-input", "student-roll-number-input", "student-email-input"]) {
+    document.getElementById(elementId).addEventListener("change", () => {
+      loadStudentResults({ showStatus: false }).catch(handleUnexpectedError);
+    });
+  }
+  window.addEventListener("focus", () => {
+    loadStudentResults({ showStatus: false }).catch(() => {});
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === LATEST_RESULT_STORAGE_KEY) {
+      loadStudentResults({ showStatus: false }).catch(() => {});
+    }
+  });
 }
 
 function bindEvents() {
@@ -110,7 +134,7 @@ async function loadTests({ showStatus = true } = {}) {
 function renderTests(tests) {
   const container = document.getElementById("public-tests-list");
   const startButton = document.getElementById("start-attempt-button");
-  startButton.disabled = state.currentAttempt?.status === "in_progress";
+  startButton.disabled = !tests.length || state.currentAttempt?.status === "in_progress";
   if (!tests.length) {
     container.innerHTML = "<div class=\"list-card\">No tests are available yet. Ask the admin to generate one first.</div>";
     return;
@@ -176,6 +200,7 @@ async function startAttempt() {
   if (!fullName) {
     throw new Error("Enter the student name before starting the test.");
   }
+  const runnerWindow = openAttemptRunnerShell();
 
   const attempt = await apiRequest("/attempts/start", "POST", {
     test_id: state.selectedTestId,
@@ -185,7 +210,8 @@ async function startAttempt() {
   });
   syncAttempt(attempt);
   renderResults(null);
-  setStatus(`Started test: ${attempt.test.title}`);
+  setStatus(attempt.was_resumed ? `Resumed test: ${attempt.test.title}` : `Started test: ${attempt.test.title}`);
+  openAttemptRunnerWindow(attempt.id, runnerWindow);
   await ensureCurrentQuestionVisited();
 }
 
@@ -262,6 +288,8 @@ async function submitAttempt({ isAuto = false } = {}) {
   });
   const attempt = await apiRequest(`/attempts/${state.currentAttempt.id}/submit`, "POST", { answers });
   syncAttempt(attempt);
+  storeLatestSubmittedAttempt(attempt);
+  await loadStudentResults({ showStatus: false });
   renderResults(attempt);
   setStatus(isAuto ? `Time finished. Test auto-submitted with score ${attempt.score}%.` : `Submitted test. Score: ${attempt.score}%`);
 }
@@ -415,6 +443,9 @@ function syncAttempt(attempt, preservedQuestionId = null) {
   renderAttempt(attempt);
   renderResults(attempt.status === "in_progress" ? null : attempt);
   renderStudentOverview();
+  if (attempt?.id && getIsRunnerMode()) {
+    enforceAttemptProtection();
+  }
 }
 
 function findPreferredQuestionIndex(attempt) {
@@ -626,6 +657,7 @@ function renderStudentOverview() {
   const container = document.getElementById("student-overview");
   const selectedTest = state.tests.find((test) => test.id === state.selectedTestId);
   const attempt = state.currentAttempt;
+  const latestResult = state.studentResults[0] || null;
   container.innerHTML = `
     <div class="summary-grid">
       <article class="summary-card">
@@ -648,6 +680,11 @@ function renderStudentOverview() {
     <article class="list-card">
       <strong>Right Now</strong>
       <div>${escapeHtml(buildOverviewCopy(selectedTest, attempt))}</div>
+    </article>
+    <article class="list-card">
+      <strong>Latest Result</strong>
+      <div>${escapeHtml(latestResult ? `${latestResult.test.title} | Score ${latestResult.score}%` : "No submitted results yet.")}</div>
+      ${latestResult ? `<div class="helper-text">Correct: ${escapeHtml(latestResult.correct_answer_count)} | Wrong: ${escapeHtml(latestResult.wrong_answer_count)} | Submitted: ${escapeHtml(formatTimestamp(latestResult.submitted_at))}</div>` : ""}
     </article>
   `;
 }
@@ -879,6 +916,163 @@ function setStoredAttemptId(attemptId) {
 
 function clearStoredAttemptId() {
   window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+}
+
+function storeLatestSubmittedAttempt(attempt) {
+  try {
+    window.localStorage.setItem(
+      LATEST_RESULT_STORAGE_KEY,
+      JSON.stringify({
+        id: attempt.id,
+        score: attempt.score,
+        submitted_at: attempt.submitted_at,
+      }),
+    );
+  } catch {
+    // Ignore localStorage write failures.
+  }
+}
+
+async function loadStudentResults({ showStatus = false } = {}) {
+  const email = document.getElementById("student-email-input").value.trim();
+  const fullName = document.getElementById("student-name-input").value.trim();
+  const rollNumber = document.getElementById("student-roll-number-input").value.trim();
+  if (!email && !fullName) {
+    state.studentResults = [];
+    renderStudentOverview();
+    return;
+  }
+  const searchParams = new URLSearchParams();
+  if (email) {
+    searchParams.set("email", email);
+  } else {
+    searchParams.set("full_name", fullName);
+    if (rollNumber) {
+      searchParams.set("roll_number", rollNumber);
+    }
+  }
+  state.studentResults = await apiRequest(`/students/results?${searchParams.toString()}`);
+  renderStudentOverview();
+  if (showStatus) {
+    setStatus("Student results refreshed.");
+  }
+}
+
+function applyPageMode() {
+  if (!getIsRunnerMode()) {
+    return;
+  }
+  document.title = "BrainGain Attempt Runner";
+  const selectorsToHide = [
+    ".hero",
+    ".content-grid > section:nth-of-type(1)",
+    ".content-grid > section:nth-of-type(2)",
+    ".content-grid > section:nth-of-type(3)",
+  ];
+  for (const selector of selectorsToHide) {
+    const element = document.querySelector(selector);
+    if (element instanceof HTMLElement) {
+      element.style.display = "none";
+    }
+  }
+  const takeAnotherButton = document.getElementById("take-another-test-button");
+  if (takeAnotherButton) {
+    takeAnotherButton.style.display = "none";
+  }
+  const refreshButton = document.getElementById("refresh-tests-button");
+  if (refreshButton) {
+    refreshButton.style.display = "none";
+  }
+  const mainContent = document.querySelector(".content-grid");
+  if (mainContent instanceof HTMLElement) {
+    mainContent.style.display = "grid";
+  }
+  const runnerPanels = document.querySelectorAll(".content-grid > section:nth-of-type(4), .content-grid > section:nth-of-type(5)");
+  for (const panel of runnerPanels) {
+    if (panel instanceof HTMLElement) {
+      panel.style.gridColumn = "span 12";
+    }
+  }
+  const attemptId = getRequestedAttemptId();
+  if (attemptId) {
+    setStoredAttemptId(attemptId);
+  }
+  enforceAttemptProtection();
+}
+
+function getRequestedAttemptId() {
+  return new URLSearchParams(window.location.search).get("attempt_id");
+}
+
+function getIsRunnerMode() {
+  return new URLSearchParams(window.location.search).get("runner") === "1";
+}
+
+function openAttemptRunnerShell() {
+  if (getIsRunnerMode()) {
+    return window;
+  }
+  const features = "popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes";
+  const runnerWindow = window.open("about:blank", RUNNER_WINDOW_NAME, features);
+  if (runnerWindow) {
+    runnerWindow.document.title = "BrainGain Attempt Runner";
+    runnerWindow.document.body.innerHTML = "<p style=\"font-family:sans-serif;padding:24px;\">Loading attempt runner...</p>";
+  }
+  return runnerWindow;
+}
+
+function openAttemptRunnerWindow(attemptId, runnerWindow = null) {
+  const targetWindow = runnerWindow || state.runnerWindow || window.open("", RUNNER_WINDOW_NAME);
+  const targetUrl = `/student?attempt_id=${encodeURIComponent(attemptId)}&runner=1`;
+  if (targetWindow) {
+    targetWindow.location.href = targetUrl;
+    state.runnerWindow = targetWindow;
+    if (typeof targetWindow.focus === "function") {
+      targetWindow.focus();
+    }
+    return;
+  }
+  window.location.href = targetUrl;
+}
+
+function enforceAttemptProtection() {
+  if (document.body.dataset.attemptProtectionBound === "true") {
+    return;
+  }
+  const blockAction = (event) => {
+    event.preventDefault();
+    setStatus("Copy, paste, and context menu are disabled in the attempt runner.", true);
+  };
+  document.addEventListener("copy", blockAction);
+  document.addEventListener("cut", blockAction);
+  document.addEventListener("paste", blockAction);
+  document.addEventListener("contextmenu", blockAction);
+  document.addEventListener("selectstart", blockAction);
+  document.addEventListener("keydown", (event) => {
+    const isMetaPressed = event.ctrlKey || event.metaKey;
+    const key = String(event.key || "").toLowerCase();
+    if (isMetaPressed && ["a", "c", "v", "x", "p", "s", "u"].includes(key)) {
+      blockAction(event);
+    }
+    if (event.key === "F12") {
+      blockAction(event);
+    }
+  });
+  document.body.dataset.attemptProtectionBound = "true";
+}
+
+function hydrateStudentIdentity(session) {
+  if (!session) {
+    return;
+  }
+  const nameInput = document.getElementById("student-name-input");
+  const emailInput = document.getElementById("student-email-input");
+  if (nameInput && !nameInput.value.trim()) {
+    nameInput.value = session.display_name || "Student";
+  }
+  if (emailInput && !emailInput.value.trim() && session.role === "student") {
+    emailInput.value = "student@braingain.local";
+  }
 }
 
 async function apiRequest(url, method = "GET", body = undefined) {
